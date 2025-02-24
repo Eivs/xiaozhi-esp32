@@ -12,7 +12,8 @@
 #include <esp_lcd_panel_vendor.h>
 #include "audio_codecs/es8311_audio_codec.h"
 #include <wifi_station.h>
-#define TAG "kevin-sp-v3"
+
+#define TAG "osptek-r1.2"
 
 LV_FONT_DECLARE(font_puhui_20_4);
 LV_FONT_DECLARE(font_awesome_20_4);
@@ -23,9 +24,11 @@ class OSPTEK_R1_2Board : public WifiBoard
 private:
     i2c_master_bus_handle_t display_i2c_bus_;
     i2c_master_bus_handle_t codec_i2c_bus_;
-    LcdDisplay *display_;
+    SpiLcdDisplay *display_;
     AudioCodec *audio_codec_;
     Button boot_button_;
+    Button volume_up_button_;
+    Button volume_down_button_;
 
     void InitializeSpi()
     {
@@ -74,13 +77,13 @@ private:
         ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel, true, false));
         ESP_ERROR_CHECK(esp_lcd_panel_set_gap(panel, 40, 53));
 
-        display_ = new LcdDisplay(panel_io, panel, DISPLAY_BACKLIGHT_PIN, DISPLAY_BACKLIGHT_OUTPUT_INVERT,
-                                    DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY,
-                                    {
-                                        .text_font = &font_puhui_20_4,
-                                        .icon_font = &font_awesome_20_4,
-                                        .emoji_font = DISPLAY_HEIGHT >= 240 ? font_emoji_64_init() : font_emoji_32_init(),
-                                    });
+        display_ = new SpiLcdDisplay(panel_io, panel, DISPLAY_BACKLIGHT_PIN, DISPLAY_BACKLIGHT_OUTPUT_INVERT,
+                                     DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY,
+                                     {
+                                         .text_font = &font_puhui_20_4,
+                                         .icon_font = &font_awesome_20_4,
+                                         .emoji_font = DISPLAY_HEIGHT >= 240 ? font_emoji_64_init() : font_emoji_32_init(),
+                                     });
     }
 
     // 物联网初始化，添加对 AI 可见设备
@@ -111,34 +114,61 @@ private:
 
     void InitializeButtons()
     {
-         boot_button_.OnClick([this]() {
+        boot_button_.OnClick([this]() {
             auto& app = Application::GetInstance();
             if (app.GetDeviceState() == kDeviceStateStarting && !WifiStation::GetInstance().IsConnected()) {
                 ResetWifiConfiguration();
-            }
+            } 
         });
-        boot_button_.OnPressDown([this]()
-                                 { Application::GetInstance().StartListening(); });
-        boot_button_.OnPressUp([this]()
-                               { Application::GetInstance().StopListening(); });
+
+        boot_button_.OnPressDown([this]() { 
+            Application::GetInstance().StartListening(); 
+        });
+        
+        boot_button_.OnPressUp([this]() { 
+            Application::GetInstance().StopListening(); 
+        });
 
         // 添加音量按钮的初始化
-        Button volume_up_button_(VOLUME_UP_BUTTON_GPIO);
-        volume_up_button_.OnPressDown([]()
-                                      {
-            // 处理音量增加的逻辑
-            ESP_LOGI(TAG, "Volume Up Button Pressed"); });
+        volume_up_button_.OnPressDown([this]() {
+            ESP_LOGI(TAG, "Volume Up Button Pressed"); 
+            auto codec = GetAudioCodec();
+            auto volume = codec->output_volume() + 10;
+            if (volume > 100) {
+                volume = 100;
+            }
+            codec->SetOutputVolume(volume);
+            GetDisplay()->ShowNotification("音量 " + std::to_string(volume)); 
+        });
 
-        Button volume_down_button_(VOLUME_DOWN_BUTTON_GPIO);
-        volume_down_button_.OnPressDown([]()
-                                        {
-            // 处理音量减少的逻辑
-            ESP_LOGI(TAG, "Volume Down Button Pressed"); });
+        volume_up_button_.OnLongPress([this]() {
+            GetAudioCodec()->SetOutputVolume(100);
+            GetDisplay()->ShowNotification("最大音量"); 
+        });
+
+        volume_down_button_.OnClick([this]() {
+            ESP_LOGI(TAG, "Volume Down Button Pressed");
+            auto codec = GetAudioCodec();
+            auto volume = codec->output_volume() - 10;
+            if (volume < 0)
+            {
+               volume = 0;
+            }
+            codec->SetOutputVolume(volume);
+            GetDisplay()->ShowNotification("音量 " + std::to_string(volume));
+        });
+
+        volume_down_button_.OnLongPress([this]() {
+                GetAudioCodec()->SetOutputVolume(0);
+                GetDisplay()->ShowNotification("已静音"); 
+        });
     }
 
 public:
     OSPTEK_R1_2Board() : audio_codec_(nullptr),
-                         boot_button_(BOOT_BUTTON_GPIO)
+                         boot_button_(BOOT_BUTTON_GPIO),
+                         volume_up_button_(VOLUME_UP_BUTTON_GPIO),
+                         volume_down_button_(VOLUME_DOWN_BUTTON_GPIO)
     {
         ESP_LOGI(TAG, "Initializing OSPTEK_R1_2 Board");
 
