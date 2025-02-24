@@ -11,7 +11,6 @@ set(SOURCES "audio_codecs/audio_codec.cc"
             "display/no_display.cc"
             "display/lcd_display.cc"
             "display/ssd1306_display.cc"
-            "boards/lilygo-t-circle-s3/esp_lcd_gc9d01n.c"
             "protocols/protocol.cc"
             "iot/thing.cc"
             "iot/thing_manager.cc"
@@ -51,6 +50,8 @@ elseif(CONFIG_BOARD_TYPE_KEVIN_C3)
     set(BOARD_TYPE "kevin-c3") 
 elseif(CONFIG_BOARD_TYPE_KEVIN_SP_V3_DEV)
     set(BOARD_TYPE "kevin-sp-v3-dev")
+elseif(CONFIG_BOARD_TYPE_KEVIN_YUYING_313LCD)
+    set(BOARD_TYPE "kevin-yuying-313lcd")
 elseif(CONFIG_BOARD_TYPE_LICHUANG_DEV)
     set(BOARD_TYPE "lichuang-dev")
 elseif(CONFIG_BOARD_TYPE_LICHUANG_C3_DEV)
@@ -112,7 +113,10 @@ elseif(CONFIG_BOARD_TYPE_XINGZHI_Cube_1_54TFT_ML307)
 elseif(CONFIG_BOARD_TYPE_OSPTEK_R_1_2)
     set(BOARD_TYPE "osptek-r1.2")
 endif()
-file(GLOB BOARD_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/*.cc)
+file(GLOB BOARD_SOURCES 
+    ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/*.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/*.c
+)
 list(APPEND SOURCES ${BOARD_SOURCES})
 
 if(CONFIG_CONNECTION_TYPE_MQTT_UDP)
