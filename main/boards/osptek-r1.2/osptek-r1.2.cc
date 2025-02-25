@@ -24,8 +24,8 @@ class OSPTEK_R1_2Board : public WifiBoard
 private:
     i2c_master_bus_handle_t display_i2c_bus_;
     i2c_master_bus_handle_t codec_i2c_bus_;
-    SpiLcdDisplay *display_;
-    AudioCodec *audio_codec_;
+    SpiLcdDisplay* display_;
+    AudioCodec* audio_codec_;
     Button boot_button_;
     Button volume_up_button_;
     Button volume_down_button_;
