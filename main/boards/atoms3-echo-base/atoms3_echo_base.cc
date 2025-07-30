@@ -1,11 +1,10 @@
 #include "wifi_board.h"
-#include "audio_codecs/es8311_audio_codec.h"
+#include "codecs/es8311_audio_codec.h"
 #include "display/lcd_display.h"
 #include "application.h"
 #include "button.h"
 #include "config.h"
 #include "i2c_device.h"
-#include "iot/thing_manager.h"
 #include "assets/lang_config.h"
 
 #include <esp_log.h>
@@ -110,6 +109,7 @@ private:
         InitializeSpi();
         InitializeGc9107Display();
         InitializeButtons();
+        GetBacklight()->SetBrightness(100);
         display_->SetStatus(Lang::Strings::ERROR);
         display_->SetEmotion("sad");
         display_->SetChatMessage("system", "Echo Base\nnot connected");
@@ -177,7 +177,7 @@ private:
         ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true)); 
 
 
-        display_ = new SpiLcdDisplay(io_handle, panel_handle, DISPLAY_BACKLIGHT_PIN, DISPLAY_BACKLIGHT_OUTPUT_INVERT,
+        display_ = new SpiLcdDisplay(io_handle, panel_handle,
             DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY,
             {
                 .text_font = &font_puhui_16_4,
@@ -196,12 +196,6 @@ private:
         });
     }
 
-    // 物联网初始化，添加对 AI 可见设备
-    void InitializeIot() {
-        auto& thing_manager = iot::ThingManager::GetInstance();
-        thing_manager.AddThing(iot::CreateThing("Speaker"));
-    }
-
 public:
     AtomS3EchoBaseBoard() : boot_button_(BOOT_BUTTON_GPIO) {
         InitializeI2c();
@@ -210,7 +204,7 @@ public:
         InitializeSpi();
         InitializeGc9107Display();
         InitializeButtons();
-        InitializeIot();
+        GetBacklight()->RestoreBrightness();
     }
 
     virtual AudioCodec* GetAudioCodec() override {
@@ -232,6 +226,11 @@ public:
 
     virtual Display* GetDisplay() override {
         return display_;
+    }
+
+    virtual Backlight* GetBacklight() override {
+        static PwmBacklight backlight(DISPLAY_BACKLIGHT_PIN, DISPLAY_BACKLIGHT_OUTPUT_INVERT, 256);
+        return &backlight;
     }
 };
 
