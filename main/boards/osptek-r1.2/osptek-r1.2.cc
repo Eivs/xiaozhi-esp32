@@ -5,12 +5,12 @@
 #include "button.h"
 
 #include "config.h"
-#include "iot/thing_manager.h"
+// #include "iot/thing_manager.h"
 #include "led/single_led.h"
 #include <esp_log.h>
 #include <driver/i2c_master.h>
 #include <esp_lcd_panel_vendor.h>
-#include "audio_codecs/es8311_audio_codec.h"
+#include "codecs/es8311_audio_codec.h"
 #include <wifi_station.h>
 
 #define TAG "osptek-r1.2"
@@ -24,11 +24,29 @@ class OSPTEK_R1_2Board : public WifiBoard
 private:
     i2c_master_bus_handle_t display_i2c_bus_;
     i2c_master_bus_handle_t codec_i2c_bus_;
-    SpiLcdDisplay* display_;
-    AudioCodec* audio_codec_;
+    LcdDisplay *display_;
+    AudioCodec *audio_codec_;
     Button boot_button_;
     Button volume_up_button_;
     Button volume_down_button_;
+
+    void InitializeCodecI2c()
+    {
+        ESP_LOGD(TAG, "Install I2c IO");
+        i2c_master_bus_config_t i2c_bus_cfg = {
+            .i2c_port = I2C_NUM_1,
+            .sda_io_num = AUDIO_CODEC_I2C_SDA_PIN,
+            .scl_io_num = AUDIO_CODEC_I2C_SCL_PIN,
+            .clk_source = I2C_CLK_SRC_DEFAULT,
+            .glitch_ignore_cnt = 7,
+            .intr_priority = 0,
+            .trans_queue_depth = 0,
+            .flags = {
+                .enable_internal_pullup = 1,
+            },
+        };
+        ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &codec_i2c_bus_));
+    }
 
     void InitializeSpi()
     {
@@ -77,60 +95,50 @@ private:
         ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel, true, false));
         ESP_ERROR_CHECK(esp_lcd_panel_set_gap(panel, 40, 53));
 
-        display_ = new SpiLcdDisplay(panel_io, panel, DISPLAY_BACKLIGHT_PIN, DISPLAY_BACKLIGHT_OUTPUT_INVERT,
-                                     DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY,
-                                     {
-                                         .text_font = &font_puhui_20_4,
-                                         .icon_font = &font_awesome_20_4,
-                                         .emoji_font = DISPLAY_HEIGHT >= 240 ? font_emoji_64_init() : font_emoji_32_init(),
-                                     });
+        display_ = new SpiLcdDisplay(
+            panel_io,
+            panel,
+            DISPLAY_WIDTH,
+            DISPLAY_HEIGHT,
+            DISPLAY_OFFSET_X,
+            DISPLAY_OFFSET_Y,
+            DISPLAY_MIRROR_X,
+            DISPLAY_MIRROR_Y,
+            DISPLAY_SWAP_XY,
+            {
+                .text_font = &font_puhui_20_4,
+                .icon_font = &font_awesome_20_4,
+                .emoji_font = font_emoji_32_init(),
+            });
     }
 
-    // 物联网初始化，添加对 AI 可见设备
-    void InitializeIot()
-    {
-        auto &thing_manager = iot::ThingManager::GetInstance();
-        thing_manager.AddThing(iot::CreateThing("Speaker"));
-        thing_manager.AddThing(iot::CreateThing("Lamp"));
-        thing_manager.AddThing(iot::CreateThing("Backlight"));
-    }
-
-    void InitializeCodecI2c()
-    {
-        i2c_master_bus_config_t i2c_bus_cfg = {
-            .i2c_port = I2C_NUM_1,
-            .sda_io_num = AUDIO_CODEC_I2C_SDA_PIN,
-            .scl_io_num = AUDIO_CODEC_I2C_SCL_PIN,
-            .clk_source = I2C_CLK_SRC_DEFAULT,
-            .glitch_ignore_cnt = 7,
-            .intr_priority = 0,
-            .trans_queue_depth = 0,
-            .flags = {
-                .enable_internal_pullup = 1,
-            },
-        };
-        ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &codec_i2c_bus_));
-    }
+    // // 物联网初始化，添加对 AI 可见设备
+    // void InitializeIot()
+    // {
+    //     auto &thing_manager = iot::ThingManager::GetInstance();
+    //     thing_manager.AddThing(iot::CreateThing("Speaker"));
+    //     thing_manager.AddThing(iot::CreateThing("Lamp"));
+    //     thing_manager.AddThing(iot::CreateThing("Backlight"));
+    // }
 
     void InitializeButtons()
     {
-        boot_button_.OnClick([this]() {
+        boot_button_.OnClick([this]()
+                             {
             auto& app = Application::GetInstance();
             if (app.GetDeviceState() == kDeviceStateStarting && !WifiStation::GetInstance().IsConnected()) {
                 ResetWifiConfiguration();
-            } 
-        });
+            } });
 
-        boot_button_.OnPressDown([this]() { 
-            Application::GetInstance().StartListening(); 
-        });
-        
-        boot_button_.OnPressUp([this]() { 
-            Application::GetInstance().StopListening(); 
-        });
+        boot_button_.OnPressDown([this]()
+                                 { Application::GetInstance().StartListening(); });
+
+        boot_button_.OnPressUp([this]()
+                               { Application::GetInstance().StopListening(); });
 
         // 添加音量按钮的初始化
-        volume_up_button_.OnPressDown([this]() {
+        volume_up_button_.OnPressDown([this]()
+                                      {
             ESP_LOGI(TAG, "Volume Up Button Pressed"); 
             auto codec = GetAudioCodec();
             auto volume = codec->output_volume() + 10;
@@ -138,15 +146,15 @@ private:
                 volume = 100;
             }
             codec->SetOutputVolume(volume);
-            GetDisplay()->ShowNotification("音量 " + std::to_string(volume)); 
-        });
+            GetDisplay()->ShowNotification("音量 " + std::to_string(volume)); });
 
-        volume_up_button_.OnLongPress([this]() {
+        volume_up_button_.OnLongPress([this]()
+                                      {
             GetAudioCodec()->SetOutputVolume(100);
-            GetDisplay()->ShowNotification("最大音量"); 
-        });
+            GetDisplay()->ShowNotification("最大音量"); });
 
-        volume_down_button_.OnClick([this]() {
+        volume_down_button_.OnClick([this]()
+                                    {
             ESP_LOGI(TAG, "Volume Down Button Pressed");
             auto codec = GetAudioCodec();
             auto volume = codec->output_volume() - 10;
@@ -155,13 +163,12 @@ private:
                volume = 0;
             }
             codec->SetOutputVolume(volume);
-            GetDisplay()->ShowNotification("音量 " + std::to_string(volume));
-        });
+            GetDisplay()->ShowNotification("音量 " + std::to_string(volume)); });
 
-        volume_down_button_.OnLongPress([this]() {
+        volume_down_button_.OnLongPress([this]()
+                                        {
                 GetAudioCodec()->SetOutputVolume(0);
-                GetDisplay()->ShowNotification("已静音"); 
-        });
+                GetDisplay()->ShowNotification("已静音"); });
     }
 
 public:
@@ -171,12 +178,12 @@ public:
                          volume_down_button_(VOLUME_DOWN_BUTTON_GPIO)
     {
         ESP_LOGI(TAG, "Initializing OSPTEK_R1_2 Board");
-
-        InitializeSpi();
         InitializeCodecI2c();
+        InitializeSpi();
         InitializeButtons();
         InitializeSt7789Display();
-        InitializeIot();
+        // InitializeIot();
+        GetBacklight()->RestoreBrightness();
     }
 
     ~OSPTEK_R1_2Board()
@@ -196,35 +203,21 @@ public:
 
     virtual AudioCodec *GetAudioCodec() override
     {
-        ESP_LOGD(TAG, "Install Audio driver");
-        if (audio_codec_ == nullptr)
-        {
-            audio_codec_ = new Es8311AudioCodec(
-                codec_i2c_bus_,           // i2c_master_handle
-                I2C_NUM_1,                // i2c_port
-                AUDIO_INPUT_SAMPLE_RATE,  // input_sample_rate
-                AUDIO_OUTPUT_SAMPLE_RATE, // output_sample_rate
-                AUDIO_I2S_GPIO_MCLK,      // mclk
-                AUDIO_I2S_GPIO_BCLK,      // bclk
-                AUDIO_I2S_GPIO_WS,        // ws
-                AUDIO_I2S_GPIO_DOUT,      // dout
-                AUDIO_I2S_GPIO_DIN,       // din
-                GPIO_NUM_NC,              // pa_pin (不使用)
-                AUDIO_CODEC_ES8311_ADDR   // es8311_addr
-            );
-
-            if (audio_codec_ == nullptr)
-            {
-                ESP_LOGE(TAG, "Failed to create ES8311 audio codec");
-                return nullptr;
-            }
-        }
-        return audio_codec_;
+        static Es8311AudioCodec audio_codec(codec_i2c_bus_, I2C_NUM_0, AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE,
+                                            AUDIO_I2S_GPIO_MCLK, AUDIO_I2S_GPIO_BCLK, AUDIO_I2S_GPIO_WS, AUDIO_I2S_GPIO_DOUT, AUDIO_I2S_GPIO_DIN,
+                                            GPIO_NUM_NC, AUDIO_CODEC_ES8311_ADDR);
+        return &audio_codec;
     }
 
     virtual Display *GetDisplay() override
     {
         return display_;
+    }
+
+    virtual Backlight *GetBacklight() override
+    {
+        static PwmBacklight backlight(DISPLAY_BACKLIGHT_PIN, DISPLAY_BACKLIGHT_OUTPUT_INVERT);
+        return &backlight;
     }
 };
 
