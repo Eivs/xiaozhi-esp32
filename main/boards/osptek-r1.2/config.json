@@ -1,0 +1,16 @@
+{
+  "target": "esp32s3",
+  "builds": [
+    {
+      "name": "osptek-r1.2",
+      "sdkconfig_append": [
+        "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
+        "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions/v2/16m.csv\"",
+        "CONFIG_LANGUAGE_EN_US=y",
+        "CONFIG_LANGUAGE_ZH_CN=y",
+        "CONFIG_USE_DEVICE_AEC=y",
+        "CONFIG_WAKE_WORD_DISABLED=y"
+      ]
+    }
+  ]
+}

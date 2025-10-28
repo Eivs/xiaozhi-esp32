@@ -7,6 +7,7 @@
 #include "config.h"
 // #include "iot/thing_manager.h"
 #include "led/single_led.h"
+#include "mcp_server.h"
 #include <esp_log.h>
 #include <driver/i2c_master.h>
 #include <esp_lcd_panel_vendor.h>
@@ -104,22 +105,50 @@ private:
             DISPLAY_OFFSET_Y,
             DISPLAY_MIRROR_X,
             DISPLAY_MIRROR_Y,
-            DISPLAY_SWAP_XY,
+            DISPLAY_SWAP_XY);
+    }
+
+    void InitializeTools()
+    {
+        InitializeLampGpio();
+        auto &mcp_server = McpServer::GetInstance();
+
+        mcp_server.AddTool(
+            "self.light.set_lamp",
+            "Turn on/off the lamp",
+            PropertyList({Property("lamp_switch", kPropertyTypeBoolean, true, false)}),
+            [this](const PropertyList &properties) -> ReturnValue
             {
-                .text_font = &font_puhui_20_4,
-                .icon_font = &font_awesome_20_4,
-                .emoji_font = font_emoji_32_init(),
+                bool led_on = properties["lamp_switch"].value<bool>();
+                SetLampStatus(led_on);
+                return true;
             });
     }
 
-    // // 物联网初始化，添加对 AI 可见设备
-    // void InitializeIot()
-    // {
-    //     auto &thing_manager = iot::ThingManager::GetInstance();
-    //     thing_manager.AddThing(iot::CreateThing("Speaker"));
-    //     thing_manager.AddThing(iot::CreateThing("Lamp"));
-    //     thing_manager.AddThing(iot::CreateThing("Backlight"));
-    // }
+    void InitializeLampGpio()
+    {
+        gpio_config_t config = {
+            .pin_bit_mask = (1ULL << BUILTIN_LAMP_GPIO),
+            .mode = GPIO_MODE_OUTPUT,
+            .pull_up_en = GPIO_PULLUP_DISABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        ESP_ERROR_CHECK(gpio_config(&config));
+        gpio_set_level(BUILTIN_LAMP_GPIO, 0);
+    }
+
+    void SetLampStatus(bool led_on_)
+    {
+        if (led_on_)
+        {
+            gpio_set_level(BUILTIN_LAMP_GPIO, 1);
+        }
+        else
+        {
+            gpio_set_level(BUILTIN_LAMP_GPIO, 0);
+        }
+    }
 
     void InitializeButtons()
     {
@@ -182,7 +211,7 @@ public:
         InitializeSpi();
         InitializeButtons();
         InitializeSt7789Display();
-        // InitializeIot();
+        // InitializeTools();
         GetBacklight()->RestoreBrightness();
     }
 
