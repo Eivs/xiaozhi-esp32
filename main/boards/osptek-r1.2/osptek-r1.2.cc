@@ -5,12 +5,12 @@
 #include "button.h"
 
 #include "config.h"
-// #include "iot/thing_manager.h"
 #include "led/single_led.h"
 #include "mcp_server.h"
 #include <esp_log.h>
 #include <driver/i2c_master.h>
 #include <esp_lcd_panel_vendor.h>
+#include <driver/ledc.h>
 #include "codecs/es8311_audio_codec.h"
 #include <wifi_station.h>
 
@@ -113,40 +113,68 @@ private:
         InitializeLampGpio();
         auto &mcp_server = McpServer::GetInstance();
 
+        std::vector<Property> lamp_properties;
+        lamp_properties.push_back(Property("lamp_switch", kPropertyTypeBoolean, true));
+        lamp_properties.push_back(Property("brightness", kPropertyTypeInteger, 100, 0, 100));
+
         mcp_server.AddTool(
             "self.light.set_lamp",
-            "Turn on/off the lamp",
-            PropertyList({Property("lamp_switch", kPropertyTypeBoolean, true, false)}),
+            "Turn on/off the lamp with brightness control",
+            PropertyList(lamp_properties),
             [this](const PropertyList &properties) -> ReturnValue
             {
                 bool led_on = properties["lamp_switch"].value<bool>();
-                SetLampStatus(led_on);
+                uint8_t brightness = properties["brightness"].value<int>();
+
+                if (brightness > 100)
+                    brightness = 100;
+
+                SetLampStatus(led_on, brightness);
                 return true;
             });
     }
 
     void InitializeLampGpio()
     {
-        gpio_config_t config = {
-            .pin_bit_mask = (1ULL << BUILTIN_LAMP_GPIO),
-            .mode = GPIO_MODE_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE,
-        };
-        ESP_ERROR_CHECK(gpio_config(&config));
-        gpio_set_level(BUILTIN_LAMP_GPIO, 0);
+        // 配置 LEDC 定时器用于 PWM 控制
+        const ledc_timer_config_t lamp_timer = {
+            .speed_mode = LEDC_LOW_SPEED_MODE,
+            .duty_resolution = LEDC_TIMER_10_BIT,
+            .timer_num = LEDC_TIMER_1, // 使用 TIMER_1 避免与背光冲突
+            .freq_hz = 5000,           // 5kHz PWM 频率
+            .clk_cfg = LEDC_AUTO_CLK,
+            .deconfigure = false};
+        ESP_ERROR_CHECK(ledc_timer_config(&lamp_timer));
+
+        // 配置 LEDC 通道
+        const ledc_channel_config_t lamp_channel = {
+            .gpio_num = BUILTIN_LAMP_GPIO,
+            .speed_mode = LEDC_LOW_SPEED_MODE,
+            .channel = LEDC_CHANNEL_1, // 使用 CHANNEL_1 避免与背光冲突
+            .intr_type = LEDC_INTR_DISABLE,
+            .timer_sel = LEDC_TIMER_1,
+            .duty = 0,
+            .hpoint = 0,
+            .flags = {
+                .output_invert = 0,
+            }};
+        ESP_ERROR_CHECK(ledc_channel_config(&lamp_channel));
     }
 
-    void SetLampStatus(bool led_on_)
+    void SetLampStatus(bool led_on_, uint8_t brightness_ = 100)
     {
-        if (led_on_)
+        if (led_on_ && brightness_ > 0)
         {
-            gpio_set_level(BUILTIN_LAMP_GPIO, 1);
+            // LEDC 分辨率为 10 位，因此：100% = 1023
+            uint32_t duty_cycle = (1023 * brightness_) / 100;
+            ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, duty_cycle);
+            ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
         }
         else
         {
-            gpio_set_level(BUILTIN_LAMP_GPIO, 0);
+            // 关闭 LED
+            ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, 0);
+            ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
         }
     }
 
@@ -209,9 +237,9 @@ public:
         ESP_LOGI(TAG, "Initializing OSPTEK_R1_2 Board");
         InitializeCodecI2c();
         InitializeSpi();
-        InitializeButtons();
         InitializeSt7789Display();
-        // InitializeTools();
+        InitializeButtons();
+        InitializeTools();
         GetBacklight()->RestoreBrightness();
     }
 

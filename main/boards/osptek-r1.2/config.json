@@ -6,10 +6,8 @@
       "sdkconfig_append": [
         "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
         "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions/v2/16m.csv\"",
-        "CONFIG_LANGUAGE_EN_US=y",
         "CONFIG_LANGUAGE_ZH_CN=y",
-        "CONFIG_USE_DEVICE_AEC=y",
-        "CONFIG_WAKE_WORD_DISABLED=y"
+        "CONFIG_USE_DEVICE_AEC=y"
       ]
     }
   ]
